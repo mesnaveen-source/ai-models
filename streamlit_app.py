@@ -64,7 +64,7 @@ def main():
     st.sidebar.header("Options")
     train_all = st.sidebar.button("Train all models and evaluate")
 
-    st.write("## Dataset")
+    st.write("## DataSet used: Mobile price Classification")
     st.write("Train size:", X_train.shape, "Test size:", X_test.shape)
 
     # single-model training/evaluation removed — only batch evaluation available
@@ -150,3 +150,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
