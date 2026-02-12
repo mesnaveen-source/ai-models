@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import ConfusionMatrixDisplay
 
-from run_models import build_pipelines, load_data, generate_observation, TRAIN_PATH, TEST_PATH
+from run_models import build_pipelines, load_data, generate_observation, TRAIN_PATH, TEST_PATH, evaluate_model
 
 
 @st.cache_data
@@ -14,8 +14,8 @@ def load_dataset():
     return X_train, X_test, y_train, y_test
 
 
-@st.cache_data
 def get_models():
+    # return fresh pipelines so they can be trained independently
     return build_pipelines()
 
 
@@ -64,6 +64,7 @@ def main():
     st.sidebar.header("Options")
     model_choice = st.sidebar.selectbox("Choose model", list(models.keys()))
     retrain = st.sidebar.button("Train / Retrain selected model")
+    train_all = st.sidebar.button("Train all models and evaluate")
 
     st.write("## Dataset")
     st.write("Train size:", X_train.shape, "Test size:", X_test.shape)
@@ -74,6 +75,72 @@ def main():
         with st.spinner(f"Training {model_choice}..."):
             model.fit(X_train, y_train)
         st.success("Training complete")
+
+    if train_all:
+        st.info("Training all models — this may take a while")
+        results = []
+        progress = st.progress(0)
+        total = len(models)
+        i = 0
+        for name, m in models.items():
+            i += 1
+            with st.spinner(f"Training {name} ({i}/{total})..."):
+                try:
+                    m.fit(X_train, y_train)
+                except Exception as e:
+                    st.warning(f"Failed to train {name}: {e}")
+                    continue
+            # evaluate using evaluate_model from run_models
+            try:
+                metrics = evaluate_model(m, X_test, y_test)
+            except Exception as e:
+                st.warning(f"Evaluation failed for {name}: {e}")
+                metrics = {"Accuracy": np.nan, "Precision": np.nan, "Recall": np.nan, "F1": np.nan, "MCC": np.nan, "AUC": np.nan}
+
+            obs = generate_observation(metrics)
+            row = {"Model": name}
+            row.update(metrics)
+            row["Observation"] = obs
+            results.append(row)
+            progress.progress(int(i / total * 100))
+
+        if len(results) == 0:
+            st.warning("No models produced results.")
+        else:
+            df = pd.DataFrame(results)
+            # reorder columns if present
+            cols = [c for c in ["Model", "Accuracy", "Precision", "Recall", "F1", "MCC", "AUC", "Observation"] if c in df.columns]
+            df = df[cols]
+            st.write("## All models — metrics summary")
+            st.dataframe(df.style.format({"Accuracy": "{:.4f}", "Precision": "{:.4f}", "Recall": "{:.4f}", "F1": "{:.4f}", "MCC": "{:.4f}", "AUC": lambda v: "{:.4f}".format(v) if pd.notna(v) else "NaN"}))
+
+            # per-model tabs
+            tabs = st.tabs(list(df["Model"]))
+            for tab, (_, r) in zip(tabs, df.iterrows()):
+                with tab:
+                    st.write(f"### {r['Model']}")
+                    m = models[r['Model']]
+                    # predictions
+                    try:
+                        y_pred = m.predict(X_test)
+                    except Exception as e:
+                        st.error(f"Could not predict for {r['Model']}: {e}")
+                        continue
+                    st.write("**Metrics**")
+                    st.json({k: (float(v) if (not pd.isna(v)) else None) for k, v in r.items() if k != 'Model'})
+                    st.write("**Observation**", r.get("Observation", ""))
+                    st.write("**Confusion matrix**")
+                    fig, ax = plt.subplots()
+                    try:
+                        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
+                        st.pyplot(fig)
+                    except Exception as e:
+                        st.warning(f"Could not draw confusion matrix: {e}")
+
+            # save summary CSV
+            out_path = TRAIN_PATH.replace('train.csv', 'results_metrics_streamlit.csv')
+            df.to_csv(out_path, index=False)
+            st.success(f"Saved summary to {out_path}")
 
     st.write("## Selected Model: ", model_choice)
 
