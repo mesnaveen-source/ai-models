@@ -62,19 +62,12 @@ def main():
     models = get_models()
 
     st.sidebar.header("Options")
-    model_choice = st.sidebar.selectbox("Choose model", list(models.keys()))
-    retrain = st.sidebar.button("Train / Retrain selected model")
     train_all = st.sidebar.button("Train all models and evaluate")
 
     st.write("## Dataset")
     st.write("Train size:", X_train.shape, "Test size:", X_test.shape)
 
-    model = models[model_choice]
-
-    if retrain:
-        with st.spinner(f"Training {model_choice}..."):
-            model.fit(X_train, y_train)
-        st.success("Training complete")
+    # single-model training/evaluation removed — only batch evaluation available
 
     if train_all:
         st.info("Training all models — this may take a while")
@@ -127,7 +120,16 @@ def main():
                         st.error(f"Could not predict for {r['Model']}: {e}")
                         continue
                     st.write("**Metrics**")
-                    st.json({k: (float(v) if (not pd.isna(v)) else None) for k, v in r.items() if k != 'Model'})
+                    # Build metrics dict: convert numeric metrics to float, keep Observation as string
+                    metrics_display = {}
+                    for k, v in r.items():
+                        if k == 'Model':
+                            continue
+                        if k == 'Observation':
+                            metrics_display[k] = v
+                        else:
+                            metrics_display[k] = float(v) if (pd.notna(v)) else None
+                    st.json(metrics_display)
                     st.write("**Observation**", r.get("Observation", ""))
                     st.write("**Confusion matrix**")
                     fig, ax = plt.subplots()
@@ -142,31 +144,8 @@ def main():
             df.to_csv(out_path, index=False)
             st.success(f"Saved summary to {out_path}")
 
-    st.write("## Selected Model: ", model_choice)
-
-    if st.button("Evaluate selected model (requires prior training) "):
-        try:
-            metrics, y_pred = evaluate_and_report(model, X_test, y_test)
-        except Exception as e:
-            st.error(f"Evaluation failed: {e}")
-            return
-
-        obs = generate_observation(metrics)
-
-        st.write("### Metrics")
-        st.json(metrics)
-        st.write("**Observation:**", obs)
-
-        st.write("### Confusion matrix")
-        fig, ax = plt.subplots()
-        ConfusionMatrixDisplay.from_predictions(y_test, y_pred, ax=ax)
-        st.pyplot(fig)
-
-        if not np.isnan(metrics.get("AUC", np.nan)):
-            st.write("AUC:", float(metrics["AUC"]))
-
     st.write("---")
-    st.write("Hints: Use the sidebar to select a model and click 'Train / Retrain' then evaluate.")
+    st.write("Hints: Use the sidebar to run batch training/evaluation for all models.")
 
 
 if __name__ == "__main__":
