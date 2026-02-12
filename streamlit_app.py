@@ -104,8 +104,20 @@ def main():
             # reorder columns if present
             cols = [c for c in ["Model", "Accuracy", "Precision", "Recall", "F1", "MCC", "AUC", "Observation"] if c in df.columns]
             df = df[cols]
+
+            # Split observations into a separate table
+            if "Observation" in df.columns:
+                df_obs = df[["Model", "Observation"]].copy()
+                df_metrics = df.drop(columns=["Observation"]).copy()
+            else:
+                df_metrics = df.copy()
+                df_obs = pd.DataFrame(columns=["Model", "Observation"])
+
             st.write("## All models — metrics summary")
-            st.dataframe(df.style.format({"Accuracy": "{:.4f}", "Precision": "{:.4f}", "Recall": "{:.4f}", "F1": "{:.4f}", "MCC": "{:.4f}", "AUC": lambda v: "{:.4f}".format(v) if pd.notna(v) else "NaN"}))
+            st.dataframe(df_metrics.style.format({"Accuracy": "{:.4f}", "Precision": "{:.4f}", "Recall": "{:.4f}", "F1": "{:.4f}", "MCC": "{:.4f}", "AUC": lambda v: "{:.4f}".format(v) if pd.notna(v) else "NaN"}))
+
+            st.write("## Model performance observations")
+            st.table(df_obs)
 
             # per-model tabs
             tabs = st.tabs(list(df["Model"]))
@@ -139,10 +151,12 @@ def main():
                     except Exception as e:
                         st.warning(f"Could not draw confusion matrix: {e}")
 
-            # save summary CSV
+            # save summary CSVs
             out_path = TRAIN_PATH.replace('train.csv', 'results_metrics_streamlit.csv')
-            df.to_csv(out_path, index=False)
-            st.success(f"Saved summary to {out_path}")
+            out_obs = TRAIN_PATH.replace('train.csv', 'results_observations_streamlit.csv')
+            df_metrics.to_csv(out_path, index=False)
+            df_obs.to_csv(out_obs, index=False)
+            st.success(f"Saved metrics to {out_path} and observations to {out_obs}")
 
     st.write("---")
     st.write("Hints: Use the sidebar to run batch training/evaluation for all models.")
@@ -150,4 +164,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
